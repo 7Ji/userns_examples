@@ -6,7 +6,8 @@ use nix::{unistd::{Uid, getuid, getgid}, libc::{uid_t, gid_t, pid_t}};
 struct IdMap {
     out_me: uid_t,
     out_sub_start: uid_t,
-    // out_sub_range: uid_t,
+    out_me_str: String,
+    out_sub_start_str: String,
 }
 
 #[derive(Debug)]
@@ -45,18 +46,24 @@ impl SubId {
 }
 
 impl IdMap {
+    fn new(out_me: uid_t, out_sub_start: uid_t) -> Self {
+        Self {
+            out_me,
+            out_sub_start,
+            out_me_str: format!("{}", out_me),
+            out_sub_start_str: format!("{}", out_sub_start),
+        }
+    }
+
     fn set_pid(&self, pid: pid_t, prog: &str) {
-        let mut command = Command::new(prog);
-        command
+        if ! Command::new(prog)
             .arg(format!("{}", pid))
             .arg("0")
-            .arg(format!("{}", self.out_me))
+            .arg(&self.out_me_str)
             .arg("1")
             .arg("1")
-            .arg(format!("{}", self.out_sub_start))
-            .arg("65535");
-        println!("Command is {:?}", command);
-        if ! command
+            .arg(&self.out_sub_start_str)
+            .arg("65535")
             .spawn()
             .unwrap()
             .wait_with_output()
@@ -79,13 +86,13 @@ impl IdMaps {
         let gid = getgid();
         let subgid = SubId::from_file("/etc/subgid", gid.as_raw(), &name);
         return Self {
-            uid_map: IdMap { out_me: uid.as_raw(), out_sub_start: subuid.start },
-            gid_map: IdMap { out_me: gid.as_raw(), out_sub_start: subgid.start },
+            uid_map: IdMap::new(uid.as_raw(), subuid.start),
+            gid_map: IdMap::new(gid.as_raw(), subgid.start),
         }
     }
 
     pub(crate) fn set_pid(&self, pid: pid_t) {
-        self.uid_map.set_pid(pid, "/usr/bin/newuidmap");
         self.gid_map.set_pid(pid, "/usr/bin/newgidmap");
+        self.uid_map.set_pid(pid, "/usr/bin/newuidmap");
     }
 }
